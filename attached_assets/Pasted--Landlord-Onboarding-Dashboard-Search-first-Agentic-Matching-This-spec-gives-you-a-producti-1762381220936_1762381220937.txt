@@ -1,0 +1,393 @@
+# Landlord Onboarding + Dashboard (Search‑first, Agentic Matching)
+
+This spec gives you a production‑oriented blueprint and code skeletons for a landlord dashboard and onboarding flow. It bakes in **must‑haves**, **red flags**, and **agentic matching**. The tenant experience remains search‑first; the system uses LLM tools for explanations and workflow automation (not chat‑first).
+
+---
+
+## 1) UX Flow Overview
+
+### A. Landlord Onboarding Wizard (4 steps)
+
+1. **Account & Org**: Landlord/Agent type, company name (optional), contact details, verification stub.
+2. **Property Basics**: Address + geocode, property type, bedrooms, bathrooms, size, furnished, available from, rent pcm, deposit, council tax band, EPC rating, photos/floorplans.
+3. **Requirements** *(must‑haves)*: income multiple, guarantor rules, max occupants, pets/students policy, min term, documents required from tenant.
+4. **Red Flags & Preferences**: disallowed situations (e.g., adverse credit, CCJs), smoking, HMO constraints, prior eviction history requirement, affordability cutoffs, viewing slots.
+
+Completion → lands on **Landlord Dashboard** with:
+
+* Property list (cards) + status (live/draft), match funnel, price suggestions.
+* **Tenant Pool (Scout Mode)** tab ranked by **Property→Tenant** score.
+* **Invites/Matches** tab (double‑opt‑in).
+* **Viewings** calendar with slots management.
+
+---
+
+## 2) Data Model (Convex types)
+
+```ts
+// users
+users: {
+  clerkId: string,
+  role: 'landlord' | 'agent' | 'tenant',
+  name: string, email: string, phone?: string,
+  kycLevel?: 'none'|'basic'|'full',
+}
+
+// property
+properties: {
+  landlordId: Id<'users'>,
+  title: string,                      // e.g. "Cortland at Colliers Yard, Salford, M3"
+  developmentBrand?: string,          // Built For Renters brand name
+  address: string,
+  geo?: { lat: number, lng: number },
+  propertyType: 'apartment'|'house'|'studio'|'maisonette'|'other',
+  bedrooms: number,
+  bathrooms: number,
+  sizeSqFt?: number,
+  sizeSqM?: number,
+  furnished: 'furnished'|'unfurnished'|'part',
+  availableFromISO: string,           // ISO date
+  rentPcm: number,
+  rentPw?: number,
+  deposit: number,
+  councilTaxBand?: string,            // A..H or unknown
+  epcRating?: string,                 // A..G or unknown
+  builtForRenters?: boolean,
+  tenancyInfo?: string,               // free text (e.g., incentives, min term notes)
+  photos: string[],                   // file keys/URLs
+  floorplans?: string[],              // file keys/URLs
+  amenities: string[],                // see enum below
+  accessibilityNotes?: string,
+  parking?: boolean,
+  garden?: 'none'|'private'|'communal'|'terrace',
+  transportLinks?: string[],
+  managedBy?: string,                 // agent/brand
+  createdAt: number,
+  status: 'draft'|'live'|'paused',
+}
+
+// requirements (must‑haves)
+requirements: {
+  propertyId: Id<'properties'>,
+  incomeMultiple: number,             // e.g., 2.8–3.5× monthly rent
+  minTermMonths: number,
+  guarantorRequired: boolean,
+  petsAllowed: boolean,
+  studentsOk: boolean,
+  smokingAllowed: boolean,
+  maxOccupants?: number,
+  docsRequired: Array<'id'|'payslip'|'address'|'employment'|'landlord_ref'|'credit_report'>,
+}
+
+// red flags (disqualifiers or strong negatives)
+redFlags: {
+  propertyId: Id<'properties'>,
+  disallowAdverseCredit: boolean,
+  disallowCCJs: boolean,
+  disallowArrearsHistory: boolean,
+  evictionsHistoryDisallowed: boolean,
+  hmoRestrictions?: string,           // text for local rules / license caps
+  otherNotes?: string,
+}
+
+// viewing slots
+viewingSlots: {
+  propertyId: Id<'properties'>,
+  start: number,                      // epoch ms
+  end: number,
+  capacity?: number,                  // group viewings
+}
+
+// amenities & on‑site perks (denormalised for search)
+amenities: {
+  propertyId: Id<'properties'>,
+  tags: string[] // e.g., gym, pets allowed, residents lounge, coworking, concierge, 24hr maintenance, games room, parking, bike storage, WiFi included, private dining room, communal gardens, etc.
+}
+
+// tenant profiles & docs (as previously defined)
+```
+
+**Amenity enum suggestions** (extensible):
+
+```
+['gym','yoga studio','spin studio','games room','golf simulator','coworking','boardroom',
+ 'residents lounge','terrace','concierge','24/7 maintenance','pet friendly','bike storage',
+ 'parking','wifi included','exclusive community','fully managed','long term contracts',
+ 'social activities','communal gardens','private dining room','security']
+```
+
+---
+
+## 3) Landlord Onboarding Wizard (UI spec)
+
+**Step 1: Basics**
+
+* Inputs: Brand/Development (optional), Address (autocomplete), Property Type, Beds, Baths, Size (sq ft / sq m), Furnishing, Available from (date).
+* Uploads: Photos (min 5), Floorplan(s).
+
+**Step 2: Pricing & Tenancy**
+
+* Rent pcm (auto‑calc pw), Deposit, Min term, Council Tax band, EPC.
+* Incentives toggle (e.g., low deposit, company lets, rental incentives) + free‑text description.
+
+**Step 3: Requirements (Must‑haves)**
+
+* Income multiple (slider 2.0×–4.0×).
+* Guarantor required (yes/no).
+* Pets allowed (yes/no), Students OK (yes/no), Smoking allowed (yes/no).
+* Max occupants.
+* Documents checklist (ID, payslips, proof of address, employment letter, prev. landlord ref, credit report).
+
+**Step 4: Red Flags & Viewings**
+
+* Red flags toggles: adverse credit, CCJs, arrears, eviction history (disallow/soft warn).
+* Local HMO/licence constraints (free text).
+* Add viewing slots (multi‑select calendar). Save & Publish.
+
+**Validation**: block publish if: rent/deposit missing, address missing, beds/baths/furnish type missing.
+
+---
+
+## 4) Landlord Dashboard (screens)
+
+### A. Properties
+
+* **Cards**: photo, title, rent pcm, status, match funnel (Views → Hot tenants → Invites → Viewings).
+* Actions: Edit, Pause, Duplicate, Archive (use your fun label, e.g., *Send to Oblivion*).
+
+### B. Tenant Pool (Scout Mode)
+
+* Filters: distance, income multiple met, docs completeness ≥ X, move‑in window, pets/students.
+* **List + Swipe Deck** view toggles.
+* Each tenant card: scorePT label (Hot/Warm/Cold), affordability meter, docs ring (%), move‑in, household, pets.
+* Quick actions: Invite to viewing (choose slot), Pre‑approve (subject to checks), Pass.
+
+### C. Invites & Matches
+
+* Pipeline table: Invited → Accepted → Viewing booked → Viewed → Offer → Agreement → Deposit.
+* SLA indicators and reminder nudges.
+
+### D. Calendar
+
+* Month/week view of slots & bookings. Conflict warnings. Export ICS.
+
+### E. Insights
+
+* Suggestions: price elasticity, amenity highlights, copy quality.
+
+---
+
+## 5) Matching Logic (Property→Tenant + Tenant→Property)
+
+### Facets (normalized 0..1)
+
+* `affordability`: (tenant monthly income) / (rentPcm * incomeMultiple)
+* `reqFit`: pets, students, smoking, max occupants, guarantor
+* `timingFit`: overlap between tenant move‑in window and property availableFrom
+* `docs`: % of landlord `docsRequired` present in tenant vault
+* `distance`: distance decay to preferred location (optional if strict geo)
+* `engagement`: reply rate/recency (anti‑spam quality)
+
+### Scores
+
+```ts
+scoreTP = 40*affordability + 20*reqFit + 15*timingFit + 15*docs + 10*rentFit
+scorePT = 35*affordability + 20*timingFit + 15*docs + 15*engagement + 10*reqFit + 5*distance
+labelTP: Likely ≥ 75, Maybe 55–74, Unlikely < 55
+labelPT: Hot ≥ 80, Warm 65–79, Cold < 65
+```
+
+### LLM use
+
+* **Explainer**: turns facet deltas into 1‑line reason and longer breakdown.
+* **Normalizer**: maps free‑text amenity/description into structured tags.
+* **Copy improver**: suggests listing title & bullets.
+
+---
+
+## 6) API Contracts
+
+```ts
+// POST /api/landlord/properties  (create/update)
+// body: Property + Requirements + RedFlags + Amenities + Slots
+// returns: { propertyId }
+
+// GET /api/landlord/properties?status=live|draft
+// returns: property cards + funnel metrics
+
+// POST /api/landlord/scout
+// body: { propertyId, cursor?, limit? }
+// returns: [{ tenantId, scorePT, label, reasons, previewFields }]
+
+// POST /api/landlord/invite
+// body: { propertyId, tenantId, slotId?, messageTemplate? }
+// returns: { inviteId, status }
+
+// POST /api/viewings/slot
+// body: { propertyId, start, end, capacity? }
+
+// POST /api/viewings/book
+// body: { propertyId, slotId | start,end }
+```
+
+---
+
+## 7) Component Skeletons (React)
+
+> These are trimmed to show structure. Wire them to Convex queries/mutations.
+
+```tsx
+// components/onboarding/PropertyWizard.tsx
+export default function PropertyWizard() {
+  // stepper state
+  // Step 1: Basics
+  // Step 2: Pricing & Tenancy
+  // Step 3: Requirements
+  // Step 4: Red Flags & Viewings
+  // Persist draft after each step; publish at end.
+  return (<div className="max-w-4xl mx-auto">{/* steps here */}</div>);
+}
+```
+
+```tsx
+// components/requirements/MustHavesForm.tsx
+export function MustHavesForm({ value, onChange }) {
+  // incomeMultiple slider, guarantor toggle, pets/students/smoking toggles, max occupants, docs checklist
+  return null;
+}
+```
+
+```tsx
+// components/requirements/RedFlagsForm.tsx
+export function RedFlagsForm({ value, onChange }) {
+  // adverse credit, CCJs, arrears, evictions, HMO notes
+  return null;
+}
+```
+
+```tsx
+// components/dashboard/PropertyCard.tsx
+export function PropertyCard({ property }) {
+  // cover photo, title, rent, status, funnel mini-chart, actions: Edit/Pause/Duplicate/Archive
+  return null;
+}
+```
+
+```tsx
+// components/scout/TenantPool.tsx
+export function TenantPool({ propertyId }) {
+  // filters + list of tenant cards; actions: Invite, Pre-approve, Pass
+  return null;
+}
+```
+
+```tsx
+// components/viewings/SlotEditor.tsx
+export function SlotEditor({ propertyId }) {
+  // calendar, add/remove slots, capacity
+  return null;
+}
+```
+
+---
+
+## 8) Inference Mapping: Must‑haves & Red Flags → Scoring
+
+* **Hard disqualifiers** (immediate fail / not eligible):
+
+  * Income multiple not met by any combination (or missing guarantor when required)
+  * Red flag marked as *disallow*
+* **Soft negatives** (score dampening):
+
+  * Docs incomplete (− up to 15 pts)
+  * Timing off by ≤ 30 days (linear decay across 0..1)
+  * Distance beyond preferred radius (if configured)
+
+**Reason templates** (for explainers):
+
+* ✅ *Income multiple met (3.1× vs 3.0× required).*
+* ✅ *Move‑in aligns (available from 2025‑11‑10; your target 2025‑11‑15).*
+* ⚠️ *Missing employer letter; upload to improve your match.*
+* ❌ *Guarantor required; none provided.*
+
+---
+
+## 9) Sample Listing JSON (based on your provided details)
+
+```json
+{
+  "title": "Cortland at Colliers Yard, Salford, M3",
+  "developmentBrand": "Cortland",
+  "builtForRenters": true,
+  "propertyType": "apartment",
+  "bedrooms": 3,
+  "bathrooms": 2,
+  "sizeSqFt": 1163,
+  "sizeSqM": 108,
+  "furnished": "furnished",
+  "availableFromISO": "2025-11-05",
+  "rentPcm": 2910,
+  "rentPw": 672,
+  "deposit": 3357,
+  "councilTaxBand": "E",
+  "tenancyInfo": "Company Lets Accepted; Rental incentives available subject to start date.",
+  "amenities": [
+    "gym", "yoga studio", "spin studio", "games room", "golf simulator",
+    "coworking", "boardroom", "residents lounge", "terrace", "24/7 maintenance",
+    "pet friendly", "bike storage", "parking", "wifi included", "concierge",
+    "exclusive community", "fully managed", "social activities", "communal gardens",
+    "private dining room", "security"
+  ],
+  "photos": ["photo35.jpg","photo34.jpg","photo33.jpg"],
+  "floorplans": ["floorplan1.pdf","floorplan2.pdf"],
+  "requirements": {
+    "incomeMultiple": 3.0,
+    "minTermMonths": 12,
+    "guarantorRequired": false,
+    "petsAllowed": true,
+    "studentsOk": true,
+    "smokingAllowed": false,
+    "docsRequired": ["id","payslip","address","employment","landlord_ref","credit_report"]
+  },
+  "redFlags": {
+    "disallowAdverseCredit": true,
+    "disallowCCJs": true,
+    "disallowArrearsHistory": true,
+    "evictionsHistoryDisallowed": true,
+    "otherNotes": "Images are from show apartment; illustrative only."
+  }
+}
+```
+
+---
+
+## 10) Matching/Explainer Agent Prompts (short)
+
+**Normalizer (amenities & details)**
+
+> Convert listing description and key features into structured fields: amenities[], incentives[], managedBy, accessibilityNotes. Return JSON only.
+
+**Eligibility Checker**
+
+> Given tenantProfile, property requirements, and redFlags, return `{eligible:boolean, hardFails:string[], softIssues:string[]}`.
+
+**Explainer**
+
+> Produce one 12–20 word reason for the card and a 3–5 bullet breakdown for the detail page. Avoid legal advice; be neutral.
+
+---
+
+## 11) Guardrails & Compliance
+
+* Don’t use protected characteristics for ranking/invites.
+* Keep document access scoped & time‑boxed; audit every access.
+* Present all listings; the score is a guide, never a block to visibility.
+
+---
+
+## 12) Next Steps
+
+* Implement **PropertyWizard**, **TenantPool**, **SlotEditor** using the above contracts.
+* Wire `scorePT` and `scoreTP` to compute labels and reasons.
+* Add **Auto‑Scout** background job to invite Hot/Warm tenants under rate limits.
+* Instrument funnels (views→invites→viewings→offers) on the dashboard.
