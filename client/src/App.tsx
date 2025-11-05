@@ -11,6 +11,8 @@ import OnboardingPage from "@/pages/OnboardingPage";
 import MessagesPage from "@/pages/MessagesPage";
 import ScoutModePage from "@/pages/ScoutModePage";
 import MatchesPage from "@/pages/MatchesPage";
+import LandlordOnboardingPage from "@/pages/LandlordOnboardingPage";
+import LandlordDashboardPage from "@/pages/LandlordDashboardPage";
 import NotFound from "@/pages/not-found";
 
 function Navigation() {
@@ -29,13 +31,11 @@ function Navigation() {
     <nav className="border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 sticky top-0 z-50">
       <div className="max-w-7xl mx-auto px-4">
         <div className="flex items-center justify-between h-16">
-          <Link href="/">
-            <a className="text-xl font-semibold flex items-center gap-2" data-testid="link-logo">
-              <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
-                <Home className="w-5 h-5 text-primary-foreground" />
-              </div>
-              RentMatch
-            </a>
+          <Link href="/" className="text-xl font-semibold flex items-center gap-2" data-testid="link-logo">
+            <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
+              <Home className="w-5 h-5 text-primary-foreground" />
+            </div>
+            RentMatch
           </Link>
 
           <div className="hidden md:flex items-center gap-2">
@@ -44,16 +44,14 @@ function Navigation() {
               const isActive = location === item.path;
               return (
                 <Link key={item.path} href={item.path}>
-                  <a>
-                    <Button
-                      variant={isActive ? "default" : "ghost"}
-                      className="gap-2"
-                      data-testid={`nav-${item.label.toLowerCase()}`}
-                    >
-                      <Icon className="w-4 h-4" />
-                      {item.label}
-                    </Button>
-                  </a>
+                  <Button
+                    variant={isActive ? "default" : "ghost"}
+                    className="gap-2"
+                    data-testid={`nav-${item.label.toLowerCase()}`}
+                  >
+                    <Icon className="w-4 h-4" />
+                    {item.label}
+                  </Button>
                 </Link>
               );
             })}
@@ -77,6 +75,8 @@ function Router() {
       <Route path="/scout" component={ScoutModePage} />
       <Route path="/onboarding" component={OnboardingPage} />
       <Route path="/messages" component={MessagesPage} />
+      <Route path="/landlord/onboarding" component={LandlordOnboardingPage} />
+      <Route path="/landlord/dashboard" component={LandlordDashboardPage} />
       <Route component={NotFound} />
     </Switch>
   );
