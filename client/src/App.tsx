@@ -4,7 +4,7 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Button } from "@/components/ui/button";
-import { Home, Search, MessageSquare, User, Menu, Heart, Users } from "lucide-react";
+import { Home, Search, MessageSquare, User, Menu, Heart, Users, Building2 } from "lucide-react";
 import HomePage from "@/pages/HomePage";
 import PropertyDetailPage from "@/pages/PropertyDetailPage";
 import OnboardingPage from "@/pages/OnboardingPage";
@@ -25,6 +25,10 @@ function Navigation() {
     { path: "/scout", icon: Users, label: "Scout" },
     { path: "/messages", icon: MessageSquare, label: "Messages" },
     { path: "/onboarding", icon: User, label: "Profile" },
+  ];
+
+  const landlordNavItems = [
+    { path: "/landlord/dashboard", icon: Building2, label: "Landlord Portal" },
   ];
 
   return (
@@ -48,6 +52,25 @@ function Navigation() {
                     variant={isActive ? "default" : "ghost"}
                     className="gap-2"
                     data-testid={`nav-${item.label.toLowerCase()}`}
+                  >
+                    <Icon className="w-4 h-4" />
+                    {item.label}
+                  </Button>
+                </Link>
+              );
+            })}
+            
+            <div className="w-px h-6 bg-border mx-2" />
+            
+            {landlordNavItems.map((item) => {
+              const Icon = item.icon;
+              const isActive = location.startsWith("/landlord");
+              return (
+                <Link key={item.path} href={item.path}>
+                  <Button
+                    variant={isActive ? "default" : "outline"}
+                    className="gap-2"
+                    data-testid={`nav-${item.label.toLowerCase().replace(" ", "-")}`}
                   >
                     <Icon className="w-4 h-4" />
                     {item.label}
