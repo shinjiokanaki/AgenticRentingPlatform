@@ -4,11 +4,13 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Button } from "@/components/ui/button";
-import { Home, Search, MessageSquare, User, Menu } from "lucide-react";
+import { Home, Search, MessageSquare, User, Menu, Heart, Users } from "lucide-react";
 import HomePage from "@/pages/HomePage";
 import PropertyDetailPage from "@/pages/PropertyDetailPage";
 import OnboardingPage from "@/pages/OnboardingPage";
 import MessagesPage from "@/pages/MessagesPage";
+import ScoutModePage from "@/pages/ScoutModePage";
+import MatchesPage from "@/pages/MatchesPage";
 import NotFound from "@/pages/not-found";
 
 function Navigation() {
@@ -17,6 +19,8 @@ function Navigation() {
   const navItems = [
     { path: "/", icon: Home, label: "Home" },
     { path: "/property/1", icon: Search, label: "Properties" },
+    { path: "/matches", icon: Heart, label: "Matches" },
+    { path: "/scout", icon: Users, label: "Scout" },
     { path: "/messages", icon: MessageSquare, label: "Messages" },
     { path: "/onboarding", icon: User, label: "Profile" },
   ];
@@ -69,6 +73,8 @@ function Router() {
     <Switch>
       <Route path="/" component={HomePage} />
       <Route path="/property/:id" component={PropertyDetailPage} />
+      <Route path="/matches" component={MatchesPage} />
+      <Route path="/scout" component={ScoutModePage} />
       <Route path="/onboarding" component={OnboardingPage} />
       <Route path="/messages" component={MessagesPage} />
       <Route component={NotFound} />
