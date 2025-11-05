@@ -110,14 +110,24 @@ export class MemStorage implements IStorage {
   async createTenantPassport(insertPassport: InsertTenantPassport): Promise<TenantPassport> {
     const id = randomUUID();
     const passport: TenantPassport = {
-      ...insertPassport,
       id,
-      updatedAt: new Date(),
-      mustHaves: insertPassport.mustHaves || [],
-      redFlags: insertPassport.redFlags || [],
-      shareFields: insertPassport.shareFields || {},
+      tenantId: insertPassport.tenantId,
+      salaryAnnual: insertPassport.salaryAnnual ?? null,
+      salaryBand: insertPassport.salaryBand ?? null,
+      employer: insertPassport.employer ?? null,
+      householdSize: insertPassport.householdSize ?? null,
+      hasPets: insertPassport.hasPets ?? null,
+      petDetails: insertPassport.petDetails ?? null,
+      moveInFrom: insertPassport.moveInFrom ?? null,
+      moveInTo: insertPassport.moveInTo ?? null,
+      maxBudget: insertPassport.maxBudget ?? null,
+      mustHaves: (insertPassport.mustHaves as string[]) || [],
+      redFlags: (insertPassport.redFlags as string[]) || [],
       visible: insertPassport.visible ?? true,
+      shareFields: (insertPassport.shareFields || {}) as any,
       replyRate: insertPassport.replyRate || "0",
+      lastActive: insertPassport.lastActive ?? null,
+      updatedAt: new Date(),
     };
     this.tenantPassports.set(id, passport);
     return passport;
@@ -126,7 +136,14 @@ export class MemStorage implements IStorage {
   async updateTenantPassport(id: string, updates: Partial<InsertTenantPassport>): Promise<TenantPassport> {
     const existing = this.tenantPassports.get(id);
     if (!existing) throw new Error("Tenant passport not found");
-    const updated = { ...existing, ...updates, updatedAt: new Date() };
+    const updated: TenantPassport = { 
+      ...existing, 
+      ...updates,
+      mustHaves: (updates.mustHaves as string[]) || existing.mustHaves,
+      redFlags: (updates.redFlags as string[]) || existing.redFlags,
+      shareFields: (updates.shareFields || existing.shareFields) as any,
+      updatedAt: new Date() 
+    };
     this.tenantPassports.set(id, updated);
     return updated;
   }
@@ -151,15 +168,29 @@ export class MemStorage implements IStorage {
   async createProperty(insertProperty: InsertProperty): Promise<Property> {
     const id = randomUUID();
     const property: Property = {
-      ...insertProperty,
       id,
+      landlordId: insertProperty.landlordId,
+      title: insertProperty.title,
+      description: insertProperty.description ?? null,
+      address: insertProperty.address,
+      postcode: insertProperty.postcode ?? null,
+      latitude: insertProperty.latitude ?? null,
+      longitude: insertProperty.longitude ?? null,
+      rentPcm: insertProperty.rentPcm,
+      depositAmount: insertProperty.depositAmount ?? null,
+      beds: insertProperty.beds,
+      baths: insertProperty.baths ?? null,
+      furnished: insertProperty.furnished ?? null,
+      petsAllowed: insertProperty.petsAllowed ?? null,
+      studentsAllowed: insertProperty.studentsAllowed ?? null,
+      availableFrom: insertProperty.availableFrom ?? null,
+      images: (insertProperty.images as string[]) || [],
+      incomeMultiple: insertProperty.incomeMultiple || "2.8",
+      mustHaves: (insertProperty.mustHaves as string[]) || [],
+      redFlags: (insertProperty.redFlags as string[]) || [],
+      published: insertProperty.published ?? false,
       createdAt: new Date(),
       updatedAt: new Date(),
-      images: insertProperty.images || [],
-      mustHaves: insertProperty.mustHaves || [],
-      redFlags: insertProperty.redFlags || [],
-      incomeMultiple: insertProperty.incomeMultiple || "2.8",
-      published: insertProperty.published ?? false,
     };
     this.properties.set(id, property);
     return property;
@@ -168,7 +199,14 @@ export class MemStorage implements IStorage {
   async updateProperty(id: string, updates: Partial<InsertProperty>): Promise<Property> {
     const existing = this.properties.get(id);
     if (!existing) throw new Error("Property not found");
-    const updated = { ...existing, ...updates, updatedAt: new Date() };
+    const updated: Property = { 
+      ...existing, 
+      ...updates,
+      images: (updates.images as string[]) || existing.images,
+      mustHaves: (updates.mustHaves as string[]) || existing.mustHaves,
+      redFlags: (updates.redFlags as string[]) || existing.redFlags,
+      updatedAt: new Date() 
+    };
     this.properties.set(id, updated);
     return updated;
   }
@@ -182,7 +220,13 @@ export class MemStorage implements IStorage {
 
   async createSwipe(insertSwipe: InsertSwipe): Promise<Swipe> {
     const id = randomUUID();
-    const swipe: Swipe = { ...insertSwipe, id, createdAt: new Date() };
+    const swipe: Swipe = { 
+      ...insertSwipe, 
+      id, 
+      createdAt: new Date(),
+      propertyId: insertSwipe.propertyId || null,
+      messageTemplate: insertSwipe.messageTemplate || null,
+    };
     this.swipes.set(id, swipe);
     return swipe;
   }
@@ -236,10 +280,11 @@ export class MemStorage implements IStorage {
       ...insertRule,
       id,
       createdAt: new Date(),
-      criteria: insertRule.criteria || {},
+      criteria: (insertRule.criteria || {}) as any,
       minScore: insertRule.minScore ?? 60,
       dailyCap: insertRule.dailyCap ?? 10,
       active: insertRule.active ?? true,
+      propertyId: insertRule.propertyId || null,
     };
     this.scoutRules.set(id, rule);
     return rule;
@@ -252,7 +297,13 @@ export class MemStorage implements IStorage {
 
   async createViewing(insertViewing: InsertViewing): Promise<Viewing> {
     const id = randomUUID();
-    const viewing: Viewing = { ...insertViewing, id, createdAt: new Date(), booked: false };
+    const viewing: Viewing = { 
+      ...insertViewing, 
+      id, 
+      createdAt: new Date(), 
+      booked: false,
+      tenantId: insertViewing.tenantId || null,
+    };
     this.viewings.set(id, viewing);
     return viewing;
   }
@@ -276,7 +327,13 @@ export class MemStorage implements IStorage {
 
   async createOffer(insertOffer: InsertOffer): Promise<Offer> {
     const id = randomUUID();
-    const offer: Offer = { ...insertOffer, id, createdAt: new Date(), status: "pending" };
+    const offer: Offer = { 
+      ...insertOffer, 
+      id, 
+      createdAt: new Date(), 
+      status: "pending",
+      conditions: insertOffer.conditions || null,
+    };
     this.offers.set(id, offer);
     return offer;
   }
