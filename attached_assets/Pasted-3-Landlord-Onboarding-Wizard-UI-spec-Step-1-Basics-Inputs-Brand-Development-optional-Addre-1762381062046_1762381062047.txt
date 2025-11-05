@@ -1,0 +1,81 @@
+3) Landlord Onboarding Wizard (UI spec)
+
+Step 1: Basics
+
+Inputs: Brand/Development (optional), Address (autocomplete), Property Type, Beds, Baths, Size (sq ft / sq m), Furnishing, Available from (date).
+
+Uploads: Photos (min 5), Floorplan(s).
+
+Step 2: Pricing & Tenancy
+
+Rent pcm (auto‑calc pw), Deposit, Min term, Council Tax band, EPC.
+
+Incentives toggle (e.g., low deposit, company lets, rental incentives) + free‑text description.
+
+Step 3: Requirements (Must‑haves)
+
+Income multiple (slider 2.0×–4.0×).
+
+Guarantor required (yes/no).
+
+Pets allowed (yes/no), Students OK (yes/no), Smoking allowed (yes/no).
+
+Max occupants.
+
+Documents checklist (ID, payslips, proof of address, employment letter, prev. landlord ref, credit report).
+
+Step 4: Red Flags & Viewings
+
+Red flags toggles: adverse credit, CCJs, arrears, eviction history (disallow/soft warn).
+
+Local HMO/licence constraints (free text).
+
+Add viewing slots (multi‑select calendar). Save & Publish.
+
+Validation: block publish if: rent/deposit missing, address missing, beds/baths/furnish type missing.
+
+4) Landlord Dashboard (screens)
+A. Properties
+
+Cards: photo, title, rent pcm, status, match funnel (Views → Hot tenants → Invites → Viewings).
+
+Actions: Edit, Pause, Duplicate, Archive (use your fun label, e.g., Send to Oblivion).
+
+B. Tenant Pool (Scout Mode)
+
+Filters: distance, income multiple met, docs completeness ≥ X, move‑in window, pets/students.
+
+List + Swipe Deck view toggles.
+
+Each tenant card: scorePT label (Hot/Warm/Cold), affordability meter, docs ring (%), move‑in, household, pets.
+
+Quick actions: Invite to viewing (choose slot), Pre‑approve (subject to checks), Pass.
+
+C. Invites & Matches
+
+Pipeline table: Invited → Accepted → Viewing booked → Viewed → Offer → Agreement → Deposit.
+
+SLA indicators and reminder nudges.
+
+D. Calendar
+
+Month/week view of slots & bookings. Conflict warnings. Export ICS.
+
+E. Insights
+
+Suggestions: price elasticity, amenity highlights, copy quality.
+
+5) Matching Logic (Property→Tenant + Tenant→Property)
+Facets (normalized 0..1)
+
+affordability: (tenant monthly income) / (rentPcm * incomeMultiple)
+
+reqFit: pets, students, smoking, max occupants, guarantor
+
+timingFit: overlap between tenant move‑in window and property availableFrom
+
+docs: % of landlord docsRequired present in tenant vault
+
+distance: distance decay to preferred location (optional if strict geo)
+
+engagement: reply rate/recency (anti‑spam quality)

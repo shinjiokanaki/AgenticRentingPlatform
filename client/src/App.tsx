@@ -40,14 +40,16 @@ function Navigation() {
               const isActive = location === item.path;
               return (
                 <Link key={item.path} href={item.path}>
-                  <Button
-                    variant={isActive ? "default" : "ghost"}
-                    className="gap-2"
-                    data-testid={`nav-${item.label.toLowerCase()}`}
-                  >
-                    <Icon className="w-4 h-4" />
-                    {item.label}
-                  </Button>
+                  <a>
+                    <Button
+                      variant={isActive ? "default" : "ghost"}
+                      className="gap-2"
+                      data-testid={`nav-${item.label.toLowerCase()}`}
+                    >
+                      <Icon className="w-4 h-4" />
+                      {item.label}
+                    </Button>
+                  </a>
                 </Link>
               );
             })}
