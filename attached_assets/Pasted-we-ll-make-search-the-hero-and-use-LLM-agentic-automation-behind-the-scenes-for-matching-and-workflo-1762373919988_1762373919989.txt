@@ -1,0 +1,194 @@
+we’ll make search the hero and use LLM/agentic automation behind the scenes for matching and workflow. Here’s a focused, build-ready plan you can drop into your Next.js + Clerk + Convex stack.
+
+Product shape (search-first, agentic underneath)
+
+Home/Search modal (tenant)
+
+Primary CTA: Search homes → modal with: location (autocomplete/map), min/max rent pcm, beds, move-in window, must-haves (pets, furnished, parking).
+
+Submit → results grid with Match badge (Likely/Maybe/Unlikely) and short “why” pill (e.g., “Income multiple met; pets allowed; move-in fits”).
+
+Onboarding (progressive)
+
+If profile incomplete, show a thin inline stepper at top of results (not blocking search):
+
+Household & budget → 2) Employment & salary → 3) Move-in & prefs → 4) Docs upload (optional now).
+
+All captured data goes into a tenant profile vault used by agents.
+
+Property detail
+
+Requirements panel (income multiple, docs, move-in from).
+
+Gaps explainer from agent (e.g., “Missing previous landlord reference; guarantor may be needed”).
+
+Book viewing (integrated calendar) or Make offer (if landlord enabled).
+
+Landlord app
+
+Property wizard (rent, available-from, min term, income multiple, guarantor rule, pets, viewing slots).
+
+Inbox with applicants sorted by match score + doc completeness.
+
+Agentic workflow (no chat UI required)
+
+Agents run as server tools, triggered by events. Small prompts, deterministic outputs.
+
+Intent Parser
+Input: { location, rentMin, rentMax, beds, moveInFrom, moveInTo, features[] }
+Output: normalized query, geo bounds, price band.
+
+Eligibility Checker (hard filters)
+
+Income multiple, pets policy, move-in window, HMO/student flags.
+
+Affordability & Risk Scorer
+
+affordability = (salaryAnnual/12) / (rentPcm * incomeMultiple) (clamped 0–1).
+
+Optional Open Banking later → replace salary self-report.
+
+Doc Requirements Resolver
+
+Compares landlord requirements vs tenant vault → docsCompleteness 0–1 and missing list.
+
+Explainer
+
+Turns reasons into short human text (no legal advice).
+
+Viewing Scheduler
+
+Confirms overlap with landlord slots; books slot; generates ICS.
+
+Lifecycle Orchestrator
+
+State machine: Browsed → Shortlisted → ViewingBooked → Viewed → Offer → Checks → Agreement → Deposit → MoveIn.
+
+All run as Convex actions/cron + webhooks (Stripe) — no chat needed, but you can surface agent outputs inline in UI.
+
+Matching & scoring (transparent + tunable)
+type MatchScore = {
+  score: number;            // 0..100
+  label: 'Likely'|'Maybe'|'Unlikely';
+  reasons: string[];        // short bullets for UI
+  facets: { affordability: number; reqFit: number; timingFit: number; docs: number; rentFit: number };
+};
+
+function computeScore(f: MatchScore['facets']): MatchScore {
+  const raw =
+    40*f.affordability + 20*f.reqFit + 15*f.timingFit + 15*f.docs + 10*f.rentFit;
+  const score = Math.round(Math.max(0, Math.min(100, raw)));
+  const label = score >= 75 ? 'Likely' : score >= 55 ? 'Maybe' : 'Unlikely';
+  return { score, label, reasons: buildReasons(f), facets: f };
+}
+
+
+Facets
+
+affordability: (monthly income / (rentPcm * incomeMultiple)) clamped 0..1
+
+reqFit: pets/students/guarantor/furnishing boolean fit averaged
+
+timingFit: overlap between tenant move-in window and availableFrom
+
+docs: % of required docs present in vault
+
+rentFit: how close rentPcm sits within user’s min–max
+
+Show the label + 1-line reason on cards; full breakdown on detail.
+
+Data model (Convex – minimal deltas)
+// tenants
+tenantProfiles: {
+  userId: Id<'users'>,
+  maxBudgetPcm: number, salaryAnnual: number, employer?: string, contractType?: 'perm'|'fixed'|'self',
+  moveInFrom: string, moveInTo?: string, bedsMin?: number,
+  pets?: boolean, students?: boolean, furnishedPref?: 'furnished'|'unfurnished'|'either',
+  locationsPreferred: string[]
+}
+
+documents: {
+  ownerUserId: Id<'users'>,
+  kind: 'id'|'payslip'|'address'|'employment'|'landlord_ref'|'credit_report',
+  fileKey: string, uploadedAt: number, expiresAt?: number
+}
+
+// landlords/properties
+properties: {
+  landlordId: Id<'users'>, address: string, geo?: {lat:number,lng:number},
+  rentPcm: number, deposit: number, availableFrom: string,
+  beds: number, furnished: 'furnished'|'unfurnished'|'part',
+  incomeMultiple?: number, guarantorRequired?: boolean,
+  petsAllowed?: boolean, studentsOk?: boolean,
+  viewingSlots: {start:number,end:number}[],
+  requiredDocs: string[] // same enum as documents.kind
+}
+
+matches: {
+  tenantId: Id<'users'>, propertyId: Id<'properties'>,
+  score: number, label: 'Likely'|'Maybe'|'Unlikely',
+  reasons: string[], facets: any, createdAt: number
+}
+
+viewings: {
+  propertyId: Id<'properties'>, tenantId: Id<'users'>, landlordId: Id<'users'>,
+  start: number, end: number, status: 'pending'|'confirmed'|'done'|'cancelled',
+  icsUrl?: string
+}
+
+API contracts (thin, composable)
+// POST /api/search
+// body: { location: string, bounds?: BBox, rentMin?: number, rentMax?: number, beds?: number, moveInFrom?: string, moveInTo?: string, filters?: {...} }
+// returns: property[] with { match: MatchScore }
+
+// POST /api/viewings/book
+// body: { propertyId, slotStart, slotEnd }
+// returns: { viewingId, icsUrl }
+
+// POST /api/offers/create
+// body: { propertyId, rentPcm, startDate, termMonths, conditions? }
+// returns: { offerId, status }
+
+UI pieces (ready to build)
+
+SearchModal.tsx (core fields)
+
+export default function SearchModal({ onSubmit }) {
+  // location autocomplete (Mapbox/Google), rent min/max, beds, dates, features[]
+  // keep it < 6 inputs; everything else is in Filters sheet
+}
+
+
+ResultsGrid.tsx
+
+Card shows photo, price, beds, area, <MatchBadge label="Likely" /> and <ReasonPill text="Income multiple met" />.
+
+PropertyPage.tsx
+
+Requirements panel (chips)
+
+BookViewing (slot picker) → POST /api/viewings/book
+
+“Gaps” box from explainer agent.
+
+ProfileStepper.tsx
+
+Inline banner: “Complete profile to improve matches (+22%)” → minimal steps.
+
+Scheduling & calendar
+
+Landlords publish slots (viewingSlots).
+
+Tenant picks; we atomically create viewings and mark the slot as occupied.
+
+Generate ICS server-side (simple RFC5545) and email both parties; add .ics download on page.
+
+Security & privacy (UK realities)
+
+Store docs encrypted (S3/R2 + KMS). Generate short-lived signed URLs.
+
+GDPR: clear consent per landlord; audit who viewed which doc, when.
+
+Right to Rent is landlord’s responsibility; we coordinate docs and appointments, not perform checks.
+
+Matching is indicative (not a credit decision).

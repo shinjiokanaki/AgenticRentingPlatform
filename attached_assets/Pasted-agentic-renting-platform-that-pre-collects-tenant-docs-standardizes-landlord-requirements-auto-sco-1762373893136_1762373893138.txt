@@ -1,0 +1,299 @@
+agentic renting platform that pre-collects tenant docs, standardizes landlord requirements, auto-scores “likelihood to get,” and runs the whole lifecycle: search → viewing → offer → checks → deposit → move-in.
+
+I’ll keep it concrete so you can build it on Next.js + Clerk + Convex + Stripe (same stack you’re using).
+
+1) Core flows
+
+Tenant onboarding
+
+Profile: basic info, current address, move-in date, max budget, pets/smoking, household size.
+
+Affordability: salary (annual/monthly), employer, contract type, optional Open Banking link (later).
+
+Upload once to a secure vault: photo ID, proof of address, payslips, employment letter, previous landlord ref, optional credit report.
+
+Consent toggles for sharing docs per landlord/property.
+
+Landlord onboarding
+
+Property: address (UPRN if available), rent, deposit, furnished, min/term, available from, EPC rating, council tax band, HMO?, pets?, students?, income multiple (e.g., 2.5–3×), guarantor rules, viewing slots.
+
+Required docs: what they’ll ask from a tenant (tick-box templates).
+
+Search & match (tenant)
+
+Natural language + filters (“2-bed in Zone 2 under £2k, move-in mid-Jan, pets ok”).
+
+Results show Match score + label: Likely, Maybe, Unlikely (always allow “see all”).
+
+Click in → AI summary explaining gaps (e.g., “income multiple met, pets allowed, move-in fits; missing previous landlord ref”).
+
+Viewing booking
+
+Landlord preloaded availability → tenant books; both get ICS invites.
+
+In-thread checklist (entry instructions, who’s attending, ID to bring).
+
+Offer & referencing
+
+Tenant clicks “Make Offer” → rent, start date, term, special conditions.
+
+Agentic flow auto-packages the pre-uploaded docs to landlord (redacting DOB/NI until needed).
+
+Optional automated checks: income multiple, document completeness, soft credit/affordability (later via TrueLayer/Hooyu/Onfido).
+
+Deposit, agreement, move-in
+
+Stripe for holding deposit / tenancy deposit; mark scheme (TDS/DPS/MyDeposits) as recorded.
+
+e-Signature for AST (DocuSign/Dropbox Sign later; stub now).
+
+Pre-move-in checklist & inventory; post-move-in follow-ups.
+
+2) Matching & “likelihood to get”
+
+Eligibility rules (hard filters)
+
+Budget vs listed rent (≤ stated max).
+
+Move-in window overlap.
+
+Pets/smoking/HMO rules.
+
+Min income multiple (e.g., 2.8× monthly rent).
+
+Guarantor requirement.
+
+Score (0–100)
+
+score = 40*affordability + 20*requirements_fit + 15*timing_fit +
+        10*docs_completeness + 10*responsiveness + 5*credit_proxy
+labels: Likely ≥ 75, Maybe 55–74, Unlikely < 55
+
+
+affordability: normalized (salary / (rent12multiple)).
+
+requirements_fit: pets, students, family, furnishing, term match.
+
+timing_fit: move-in vs available-from ± tolerance.
+
+docs_completeness: % of landlord’s requested doc set present.
+
+responsiveness: tenant reply rate (improves marketplace quality).
+
+Explain score in UI (“Met: income, timing. Gap: guarantor missing.”)
+
+3) Agentic AI graph (deterministic tools + small prompts)
+
+Agents
+
+Intent Parser → JSON from tenant/landlord free text (city, beds, min/max rent, move-in).
+
+Eligibility Checker → applies hard filters; produces pass/fail reasons.
+
+Affordability Calculator → income multiple, optional Open Banking (phase 2).
+
+Doc Verifier (lightweight) → checks presence/format/expiry (not legal verification).
+
+Explainer → turns reasons into concise, non-legal human text.
+
+Viewing Scheduler → negotiates date/time within landlord slots; creates booking.
+
+Offer Packager → bundles offer + docs with redactions.
+
+Lifecycle Orchestrator → state machine: Inquiry → Viewing → Offer → Checks → Agreement → Deposit → Move-in.
+
+Guardrails
+
+Never request off-platform comms/payment.
+
+No legal advice; point to official guidance when needed.
+
+Redact sensitive fields until needed (DOB, NI number).
+
+4) Convex schema (minimal, extendable)
+// types.ts
+export type Role = 'tenant' | 'landlord';
+
+users: {
+  _id: Id<'users'>,
+  clerkId: string, role: Role, name: string, email: string,
+  phone?: string, verifiedId?: boolean, kycLevel?: 'none'|'basic'|'full',
+  responsiveness?: number
+}
+
+tenantProfiles: {
+  userId: Id<'users'>,
+  moveInFrom: string, moveInTo?: string,
+  maxBudgetPcm: number, householdSize: number,
+  salaryAnnual: number, employer?: string, contractType?: 'perm'|'fixed'|'self',
+  pets?: boolean, smokers?: boolean, students?: boolean,
+  locationsPreferred: string[], bedsMin?: number
+}
+
+documents: {
+  ownerUserId: Id<'users'>, // tenant or landlord
+  kind: 'id'|'payslip'|'address'|'employment'|'landlord_ref'|'credit_report',
+  fileKey: string, // storage key (S3/R2)
+  uploadedAt: number, expiresAt?: number, redactionLevel?: 'public'|'landlord_only'|'sensitive'
+}
+
+properties: {
+  _id: Id<'properties'>,
+  landlordId: Id<'users'>, address: string, geo?: {lat:number,lng:number},
+  rentPcm: number, deposit: number, availableFrom: string,
+  beds: number, baths?: number, furnished: 'furnished'|'unfurnished'|'part',
+  epcRating?: string, councilTaxBand?: string,
+  petsAllowed?: boolean, studentsOk?: boolean, hmo?: boolean,
+  minTermMonths?: number, incomeMultiple?: number, guarantorRequired?: boolean,
+  requirements: string[], viewingSlots: {start:number,end:number}[]
+}
+
+intents: {
+  tenantId: Id<'users'>,
+  raw: string,
+  parsed: any, // from Intent Parser
+  status: 'open'|'matched'|'closed'
+}
+
+matches: {
+  intentId: Id<'intents'>, propertyId: Id<'properties'>,
+  score: number, label: 'Likely'|'Maybe'|'Unlikely',
+  reasons: string[]
+}
+
+conversations: {
+  type: 'dm', participantIds: Id<'users'>[],
+  context: {propertyId?: Id<'properties'>, intentId?: Id<'intents'>}
+}
+
+messages: {
+  conversationId: Id<'conversations'>, senderId: Id<'users'>,
+  kind: 'text'|'offer'|'system',
+  text?: string, payload?: any, createdAt: number
+}
+
+viewings: {
+  propertyId: Id<'properties'>, tenantId: Id<'users'>, landlordId: Id<'users'>,
+  start: number, end: number, status: 'pending'|'confirmed'|'done'|'no_show'|'cancelled',
+  calendarIcsUrl?: string
+}
+
+offers: {
+  propertyId: Id<'properties'>, tenantId: Id<'users'>, landlordId: Id<'users'>,
+  rentPcm: number, startDate: string, termMonths: number,
+  conditions?: string[], status:'proposed'|'accepted'|'declined'|'withdrawn'
+}
+
+agreements: {
+  offerId: Id<'offers'>, status:'draft'|'sent'|'signed',
+  fileKey?: string
+}
+
+payments: {
+  subject:'holding_deposit'|'tenancy_deposit'|'rent',
+  amount: number, currency:'GBP',
+  payerId: Id<'users'>, payeeId: Id<'users'>,
+  stripePaymentIntentId?: string, status:'init'|'succeeded'|'refunded'|'failed'
+}
+
+5) Matching function (server stub)
+// convex/match.ts
+import { cosineSim } from './lib/vec';
+
+export async function scoreMatch(intent, property, tenantProfile) {
+  const rentFit = tenantProfile.maxBudgetPcm >= property.rentPcm ? 1 : Math.max(0, 1 - (property.rentPcm - tenantProfile.maxBudgetPcm)/tenantProfile.maxBudgetPcm);
+  const incomeMult = property.incomeMultiple ?? 2.8;
+  const affordability = Math.min(1, (tenantProfile.salaryAnnual/12) / (property.rentPcm*incomeMult));
+  const timingFit = /* compute overlap between move-in and availableFrom */ property.availableFrom ? 1 : 0.6;
+  const reqFit = boolScore([
+    property.petsAllowed || !tenantProfile.pets,
+    property.studentsOk || !tenantProfile.students,
+    (!property.guarantorRequired) || intent.parsed.hasGuarantor
+  ]);
+  const docsCompleteness = await docsScore(tenantProfile.userId, property.requirements);
+  const raw = 40*affordability + 20*reqFit + 15*timingFit + 15*docsCompleteness + 10*rentFit;
+  const score = Math.round(Math.max(0, Math.min(100, raw)));
+  const label = score >= 75 ? 'Likely' : score >= 55 ? 'Maybe' : 'Unlikely';
+  const reasons = buildReasons({affordability, reqFit, timingFit, docsCompleteness, rentFit});
+  return { score, label, reasons };
+}
+
+6) Calendar & scheduling
+
+Landlord slots stored per property.
+
+Tenant booking picks a free slot → create viewings record → generate .ics (server) → attach to both users + send email/SMS.
+
+Prevent double booking by atomic write on slot.
+
+Rescheduling = cancel + new slot; keep audit trail.
+
+7) Document vault & sharing
+
+Store files in S3/R2 with KMS-encryption at rest; signed URLs for access.
+
+Docs linked to documents.ownerUserId.
+
+Per-property share policy: when a tenant makes an Offer, grant landlord a time-boxed read scope to the specific required docs (server-side signed URLs).
+
+Redaction: store sensitive docs twice (full + redacted PDF) and share redacted by default.
+
+Audit log: who viewed which doc, when.
+
+8) Payments (UK-friendly)
+
+Holding deposit via Stripe PaymentIntent; auto-refund on decline or convert to tenancy deposit on accept.
+
+Tenancy deposit tracked in app with field for scheme + certificate upload later (you’re not the scheme; you store evidence).
+
+First month’s rent can be requested via PaymentLink after agreement signed (optional for MVP).
+
+9) Compliance notes (UK-centric, non-legal)
+
+Landlords/agents must do Right to Rent in person or via certified identity service; you can help organize documents and appointments but don’t “perform” the check.
+
+Make privacy clear (GDPR), retention periods, and allow tenants to revoke sharing.
+
+Provide clear disclaimers: affordability scores are indicative, not a credit decision.
+
+10) UI: pages/components (thin slice)
+
+Tenant:
+
+/onboarding (profile + docs)
+
+/search (NL query + filters)
+
+/matches (cards with Likely/Maybe/Unlikely + reasons)
+
+/c/{conversationId} (chat with Offer, Share-Docs, Book-Viewing buttons)
+
+/bookings (viewings + status)
+
+Landlord:
+
+/properties/new
+
+/properties/:id (requirements, viewing slots, applications)
+
+/inbox (threads grouped by property)
+
+/offers/:id (accept/decline → agreement)
+
+Shared widgets: MatchBadge, ReasonList, DocSharePicker, SlotPicker, OfferModal, PaymentButton.
+
+11) Milestone plan (fast path)
+
+Week 1
+
+Schemas, Tenant/Property onboarding, Doc vault upload, Search + basic filters.
+Week 2
+
+Matching + score labels + explanations, Conversations, Viewing booking + ICS.
+Week 3
+
+Offer flow + doc-packaging + Stripe holding deposit, Agreement stub, lifecycle tracker.
+Week 4
+
+Guardrails, auditing, moderation, admin dashboard, polish.
