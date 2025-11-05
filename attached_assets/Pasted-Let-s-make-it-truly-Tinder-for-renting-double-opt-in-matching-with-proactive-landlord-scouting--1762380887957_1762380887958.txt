@@ -1,0 +1,162 @@
+Let’s make it truly “Tinder for renting” — double-opt-in matching with proactive landlord scouting, not just tenant search. Search stays primary for tenants, but landlords get a Scout Mode to discover, shortlist, and invite qualified tenants into a booking flow.
+
+Here’s a concrete blueprint you can build on Next.js + Clerk + Convex + Stripe.
+
+Product shape
+Tenant side (familiar, search-first)
+
+Search modal → results with Likely/Maybe/Unlikely badges + short reasons.
+
+Tenant Passport (visibility controls): salary band, move-in window, household size, pets, documents status (ID/payslips/address). Toggle what’s discoverable by landlords.
+
+Swipe Deck (optional): “Daily Picks” (top 20 properties) → swipe right to shortlist, left to pass. This drives strong engagement signals.
+
+Landlord side — Scout Mode (proactive sourcing)
+
+Tenant Pool: ranked list of nearby tenants who match the property (or saved criteria). Cards show:
+
+Match score + reasons (“Income multiple met; Move-in aligns; Docs 80% complete”)
+
+Soft signals: reply rate, verified ID badge, doc completeness ring.
+
+Swipe/Shortlist: swipe right to invite; left to pass; super-like = auto-invite with message template.
+
+Invite to View / Pre-Approve:
+
+“Invite to viewing” → tenant sees a card + available slots.
+
+“Pre-approve subject to checks” → boosts acceptance and reduces viewing churn.
+
+Auto-Scout rules (agents under the hood):
+
+“Whenever a tenant ≥80 score within 3 miles appears, send an invite to 10am Saturday slot.”
+
+“If price reduced by >5%, re-invite last week’s 60–74 score tenants.”
+
+Double-opt-in matching
+
+A match happens only when both sides indicate interest (tenant shortlists property and landlord shortlists tenant or sends invite accepted by tenant).
+
+On match, open a thread with three actions: Book Viewing, Ask a Question, Share Docs (scoped).
+
+Ranking & matching (both directions)
+
+Tenant→Property (existing):
+
+scoreTP = 40*affordability + 20*reqFit + 15*timingFit + 15*docs + 10*rentFit
+
+
+Property→Tenant (for Scout Mode):
+
+scorePT = 35*affordability_to_rent   // salary vs rent * incomeMultiple
+        + 20*timing_overlap          // move-in vs availableFrom
+        + 15*doc_completeness        // % of landlord-required docs present
+        + 15*engagement              // tenant reply rate / recency
+        + 10*household_fit           // pets/students/HMO rules
+        + 5 *distance_decay
+
+
+Labels: Hot (≥80), Warm (65–79), Cold (<65).
+Always show “See all” to avoid hidden inventory.
+
+Agents (behind the scenes)
+
+Scout Agent (landlord):
+
+Runs on property publish/price change & hourly cron.
+
+Builds PT candidate set, updates rank list, sends batched invites under rate limits.
+
+Explainer Agent:
+
+Generates one-line “why this tenant/property” for cards + full reasons on detail.
+
+Availability Agent:
+
+Nudges both sides to pick a slot; resolves clashes; generates ICS; sends reminders.
+
+Docs Agent:
+
+When invited, requests only missing docs; handles redaction & time-boxed sharing.
+
+Price Optimizer (optional):
+
+Suggests rent adjustments based on engagement deltas (views→invites→viewings).
+
+Anti-spam, fairness, and safety (UK-aware, non-legal)
+
+Rate limits: max X invites/day/property; progressive caps for new landlords.
+
+Eligibility first: no invites if tenant fails hard rules (Right-to-Rent responsibility messaging, pets disallowed, etc.).
+
+Fairness guardrails: no targeting on protected characteristics; ranking uses objective tenancy signals (income, timing, docs, engagement). Provide audit logs and appeal path.
+
+Masked contact until viewing booked; payments on-platform only.
+
+Data model (Convex deltas)
+// Swipe & interest
+tenantPropertyLikes: { tenantId, propertyId, kind: 'like'|'pass'|'superlike', createdAt }
+landlordTenantLikes: { landlordId, tenantId, propertyId?, kind: 'invite'|'pass'|'superlike', createdAt }
+
+// Visibility & preferences
+tenantPassport: {
+  tenantId, visible: boolean,
+  shareFields: { salaryBand: boolean, moveIn: boolean, pets: boolean, docsStatus: boolean }
+}
+
+// Saved searches / auto-scout rules
+scoutRules: {
+  landlordId, propertyId?, // tie to a specific listing or general criteria
+  criteria: { geo, rentMin, rentMax, beds, moveInFrom, moveInTo, pets, students },
+  minScore: number, dailyCap: number, active: boolean
+}
+
+// Matches (double opt-in)
+matches: {
+  tenantId, landlordId, propertyId,
+  origin: 'tenant_like'|'landlord_invite'|'both',
+  status: 'pending'|'matched'|'stale',
+  createdAt, lastActionAt
+}
+
+Key flows (API contracts)
+// POST /api/landlord/scout
+// body: { propertyId, cursor?, limit? }
+// returns: [{ tenantId, scorePT, label, reasons, previewFields }]
+
+// POST /api/landlord/invite
+// body: { propertyId, tenantId, messageTemplateId?, slotId? }
+// creates landlordTenantLikes(kind='invite'), notifies tenant
+
+// POST /api/tenant/respond-invite
+// body: { inviteId, action: 'accept'|'decline' }
+// on accept: create match + open thread
+
+// POST /api/swipe
+// body: { side: 'tenant'|'landlord', targetType: 'property'|'tenant', targetId, kind: 'like'|'pass'|'superlike' }
+
+UI components you’ll need
+
+SwipeDeck (both sides): stack of cards with right/left/superlike.
+
+TenantPool (landlord): list + deck toggle; filters up top; infinite scroll.
+
+InviteSheet: quick templates (“Hey {{firstName}}, you look like a great fit for 2-bed in SE1. We have slots Sat 10–12.”).
+
+MatchDialog: double-opt-in success, with actions: Book Viewing / Ask / Share Docs.
+
+AutoScoutRuleBuilder: create/edit rule; preview expected weekly invites.
+
+PassportSettings: tenant visibility toggles + “Improve your match score” checklist.
+
+Ops & metrics (to keep it healthy)
+
+Liquidity quality: invites sent → accepted → viewing booked.
+
+Match symmetry: % matches from tenant-led vs landlord-led.
+
+Time to viewing and no-show rate.
+
+Doc completeness before viewing.
+
+Abuse signals: invite decline reasons, landlord invite cap hit %, block rates.
